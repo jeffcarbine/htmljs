@@ -155,7 +155,7 @@ To server-side render, use html.js as your view engine
 app.set("view engine", "html.js");
 ```
 
-And then you can write your views using html.js with the extension of html.js. html.js templates export a default function with a parameter of `data`, which contains the data being sent from the server.
+And then you can write your views using html.js with the extension of html.js. Html.js templates export a default function with a parameter of `data`, which contains the data being sent from the server.
 
 ```js
 export default (data) => {
