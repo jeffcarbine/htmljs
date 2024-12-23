@@ -91,7 +91,7 @@ const element = new Div({
 
 html.js also includes a number of specialized elements to simplify the process:
 
-- `Layout` extends `Html` - automatically adds an instance of html.js as App();
+- `Layout` extends `Html` - automatically adds an instance of html.js as App. Imported separately from the `layout.html.js` file.
 - `Stylesheet` extends `Link` - adds `rel="stylesheet"` automatically
 - `PreLoadStyle` extends `Link` - adds `rel`, `as`, and `onload` to pre-load stylesheets
 - `Module` extends `Script` - adds `type="module`

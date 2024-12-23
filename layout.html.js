@@ -1,25 +1,198 @@
+// Standard Library Imports
 import fs from "fs";
 import path from "path";
 
-import { BODY } from "../../elements/body/body.html.js";
-import { HEAD } from "../../elements/head/head.html.js";
-import { COOKIECONSENT } from "../cookieConsent/cookieConsent.html.js";
-import { MODULE, SCRIPT } from "../../elements/script/script.html.js";
+import {
+  Head,
+  Meta,
+  Title,
+  Link,
+  PreLoadStyle,
+  Stylesheet,
+  Style,
+  Script,
+  Body,
+  Module,
+} from "./elements.html.js";
 
-export class LAYOUT {
+class ServerHead extends Head {
+  constructor(params) {
+    super(params);
+
+    this.children = [];
+
+    if (params.title !== undefined) {
+      const title = new Title({
+        textContent: params.title,
+      });
+
+      this.children.push(title);
+    }
+
+    if (params.metas !== undefined && Array.isArray(params.metas)) {
+      for (let i = 0; i < params.metas.length; i++) {
+        const meta = params.metas[i];
+
+        const metaChip = new Meta({
+          name: meta.name,
+          content: meta.content,
+        });
+
+        this.children.push(metaChip);
+      }
+    }
+
+    if (params.links !== undefined && Array.isArray(params.links)) {
+      for (let i = 0; i < params.links.length; i++) {
+        const link = params.links[i],
+          linkChip = new Link();
+
+        for (let key in link) {
+          linkChip[key] = link[key];
+        }
+
+        this.children.push(linkChip);
+      }
+    }
+
+    if (
+      params?.styles?.base !== undefined &&
+      Array.isArray(params?.styles?.base) &&
+      params?.styles?.base.length > 0
+    ) {
+      const baseStyles = params?.styles?.base;
+
+      baseStyles.forEach((href) => {
+        let stylesheetChip;
+
+        // make sure the href doesn't have two leading slashes
+        if (href.startsWith("//")) {
+          href = href.slice(1);
+        }
+
+        if (process.env.NODE_ENV === "development") {
+          stylesheetChip = new Link({
+            rel: "stylesheet",
+            class: "non-critical-style",
+            href,
+          });
+        } else {
+          stylesheetChip = new PreLoadStyle({
+            href,
+          });
+        }
+
+        this.children.push(stylesheetChip);
+      });
+    }
+
+    if (
+      params?.styles?.critical !== undefined &&
+      Array.isArray(params?.styles?.critical) &&
+      params?.styles?.critical.length > 0
+    ) {
+      const criticalStyles = params?.styles?.critical;
+
+      let criticalStyle;
+
+      // if the head tag is being generated on the server, then we need to
+      // read the stylesheets and render them as inline styles
+      criticalStyles.forEach((href) => {
+        // make sure the href doesn't have two leading slashes
+        if (href.startsWith("//")) {
+          href = href.slice(1);
+        }
+
+        const filePath = path.join(process.cwd(), href),
+          styles = fs.readFileSync(filePath, "utf8");
+
+        if (process.env.NODE_ENV === "development") {
+          // if we're in development, we can just link the stylesheets
+          criticalStyle = new Stylesheet({
+            href,
+            onload: `setTimeout(() => {
+            const nonCriticalStylesheets = document.querySelectorAll(
+              ".non-critical-style"
+            );
+
+            nonCriticalStylesheets.forEach((stylesheet) => {
+              stylesheet.rel = "stylesheet";
+            });
+          }, 2000);`,
+          });
+        } else {
+          criticalStyle = new Style({
+            textContent: styles,
+            "data-critical": true,
+          });
+        }
+
+        this.children.push(criticalStyle);
+      });
+    }
+
+    if (params.typekit !== undefined && typeof params.typekit === "string") {
+      const typekitLink = new PreLoadStyle({
+        href: `https://use.typekit.net/${params.typekit}.css`,
+      });
+
+      this.children.push(typekitLink);
+    }
+
+    if (
+      params.scripts !== undefined &&
+      Array.isArray(params.scripts) &&
+      params.scripts.length > 0
+    ) {
+      for (let i = 0; i < params.scripts.length; i++) {
+        const script = params.scripts[i],
+          scriptChip = new Script(script);
+
+        // if the script is already a Module or Script, then don't wrap it
+        if (script instanceof Script || script instanceof Module) {
+          this.children.push(script);
+          continue;
+        } else {
+          this.children.push(scriptChip);
+        }
+      }
+    }
+
+    if (
+      params.favicons !== undefined &&
+      Array.isArray(params.favicons) &&
+      params.favicons.length > 0
+    ) {
+      for (let i = 0; i < params.favicons.length; i++) {
+        const favicon = params.favicons[i],
+          faviconChip = new Link(favicon);
+
+        this.children.push(faviconChip);
+      }
+    }
+
+    if (params.inlineStyles !== undefined) {
+      const inlineStyles = new Style({
+        textContent: params.inlineStyles,
+      });
+
+      this.children.push(inlineStyles);
+    }
+  }
+}
+
+/**
+ * Class representing the layout of the HTML document.
+ */
+export class Layout {
+  /**
+   * Creates an instance of Layout.
+   *
+   * @param {Object} params - The parameters for the layout.
+   */
   constructor(params) {
     this.tagName = "html";
     this.lang = params.lang || "en";
-
-    // cookies
-    const cookies = params.data?.cookies,
-      cookiesDetected =
-        cookies?.analyticCookies !== undefined &&
-        cookies?.marketingCookies !== undefined,
-      analyticCookiesDetected = cookies?.analyticCookies !== undefined,
-      analyticCookiesOn = cookies?.analyticCookies === "true",
-      marketingCookiesDetected = cookies?.marketingCookies !== undefined,
-      marketingCookiesOn = cookies?.marketingCookies === "true";
 
     const criticals = [],
       bases = [],
@@ -48,7 +221,7 @@ export class LAYOUT {
           path.resolve(process.cwd(), `${dist}/scripts/base.scripts.js`)
         )
       ) {
-        scripts.push(new MODULE({ src: `/${dist}/scripts/base.scripts.js` }));
+        scripts.push(new Module({ src: `/${dist}/scripts/base.scripts.js` }));
       }
     } catch (e) {
       console.warn(e);
@@ -139,84 +312,81 @@ export class LAYOUT {
       }
 
       if (fs.existsSync(path.resolve(process.cwd(), script))) {
-        scripts.push(new MODULE({ src: `/${script}` }));
+        scripts.push(new Module({ src: `/${script}` }));
       }
+    }
+
+    const styles = {
+      critical: [
+        ...criticals,
+        ...(Array.isArray(params.styles?.critical)
+          ? params.styles.critical
+          : params.styles?.critical
+          ? Array.of(params.styles.critical)
+          : []),
+      ],
+      base: [
+        ...bases,
+        ...(Array.isArray(params.styles?.base)
+          ? params.styles.base
+          : params.styles?.base
+          ? Array.of(params.styles.base)
+          : []),
+      ],
+    };
+
+    // now check to see if we are in production or not - if so, loop through ALL of the base styles
+    // and check to see if any of them start with a / - if so, then prepend the CDN url to it
+    if (process.env.NODE_ENV === "production" && process.env.CDN_BASE_URL) {
+      styles.base = styles.base.map((style) => {
+        if (style.startsWith("/")) {
+          return `${process.env.CDN_BASE_URL}${style}`;
+        }
+        return style;
+        x;
+      });
     }
 
     const head = {
       title: params.title,
       links: params.links,
-      styles: {
-        critical: [
-          ...criticals,
-          ...(Array.isArray(params.styles?.critical)
-            ? params.styles.critical
-            : params.styles?.critical
-            ? Array.of(params.styles.critical)
-            : []),
-        ],
-        base: [
-          ...bases,
-          ...(Array.isArray(params.styles?.base)
-            ? params.styles.base
-            : params.styles?.base
-            ? Array.of(params.styles.base)
-            : []),
-        ],
-      },
+      styles,
       typekit: params.typekit,
-      scripts: [
-        new SCRIPT({
-          if: analyticCookiesOn,
-          async: true,
-          src: `https://www.googletagmanager.com/gtag/js?id=${params.analytics}`,
-        }),
-        new SCRIPT({
-          if: analyticCookiesOn,
-          textContent: `
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-
-            gtag('config', '${params.analytics}', {
-              'linker': {
-                'domains': ['myshopify.com',]
-              }
-            });`,
-        }),
-        new MODULE({
-          src: "/premmio/public/components/component-loader.js",
-        }),
-        ...scripts,
-        ...(typeof params.scripts === "string"
-          ? Array.of(params.scripts)
-          : params.scripts ?? []),
-      ],
       metas: [
         { name: "viewport", content: "width=device-width, initial-scale=1" },
+        ...(params.description
+          ? [{ name: "description", content: params.description }]
+          : []),
         ...(params?.metas || []),
       ],
     };
 
     const body = params.body;
 
-    if (params.gdpr !== false) {
-      const consent = COOKIECONSENT({
-        cookiesDetected,
-        analyticCookiesOn,
-        marketingCookiesOn,
-        analyticCookiesDetected,
-        marketingCookiesDetected,
-        policyName: "Privacy Policy",
-        policyHref: "/privacy-policy",
-        doubleUp: params.cookieConsentDoubleUp || false,
-      });
+    const pageScripts = [
+      new Module({
+        src: "/premmio/public/components/component-loader.js",
+      }),
+      ...scripts,
+      ...(typeof params.scripts === "string"
+        ? Array.of(params.scripts)
+        : params.scripts ?? []),
+    ];
 
-      if (Array.isArray(body)) {
-        body.push(consent);
-      } else {
-        body.children.push(consent);
-      }
+    // now check to see if we are in production or not - if so, loop through ALL of the scripts
+    // and check to see if any of them start with a / - if so, then prepend the CDN url to it
+    if (process.env.NODE_ENV === "production" && process.env.CDN_BASE_URL) {
+      pageScripts.forEach((script) => {
+        if (script.src && script.src.startsWith("/")) {
+          script.src = `${process.env.CDN_BASE_URL}${script.src}`;
+        }
+      });
+    }
+
+    if (Array.isArray(body)) {
+      body.push(...pageScripts);
+    } else {
+      body.children.push(...pageScripts);
     }
 
     if (params.style) {
@@ -227,6 +397,6 @@ export class LAYOUT {
       this["data-theme"] = params["data-theme"];
     }
 
-    this.children = [new HEAD(head), new BODY(body)];
+    this.children = [new ServerHead(head), new Body(body)];
   }
 }
