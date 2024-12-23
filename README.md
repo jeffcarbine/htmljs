@@ -91,7 +91,7 @@ const element = new Div({
 
 html.js also includes a number of specialized elements to simplify the process:
 
-- `Layout` extends `Html` - automatically adds an instance of html.js as App. Imported separately from the `layout.html.js` file.
+- `Layout` extends `Html` - automatically adds the App object. Imported separately from the `layout.html.js` file.
 - `Stylesheet` extends `Link` - adds `rel="stylesheet"` automatically
 - `PreLoadStyle` extends `Link` - adds `rel`, `as`, and `onload` to pre-load stylesheets
 - `Module` extends `Script` - adds `type="module`
@@ -133,7 +133,7 @@ Some elments have unique shorthands:
 
 #### Client-side Render
 
-To client-side render, import the Htmljs object, create a new instance of it, and call the `create` method. `create` takes in three parameters:
+To client-side render, import the Htmljs object and call the `create` method. `create` takes in three parameters:
 
 - the object to render
 - the data to data-bind (optional)
