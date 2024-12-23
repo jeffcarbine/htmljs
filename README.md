@@ -203,7 +203,7 @@ export default (data) => {
 
 ### Data Binding
 
-To data-bind, pass an anonymous function to an element's property. The anonymous function accepts three parameters:
+To data-bind, pass an anonymous function to an element's property. The anonymous function accepts two parameters:
 
 - The data being bound
 - The library of html.js elements
