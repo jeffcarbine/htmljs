@@ -42,7 +42,7 @@ const element = new Div({
 Properties of an element in html.js are the same as an Element in JavaScript, with a few exceptions listed below.
 
 ```js
-const standard = document.querySelector("#element");
+const standard = document.createElement("div");
 element.id = "foo";
 element.tagName = "div";
 element.textContent = "Hello World";
