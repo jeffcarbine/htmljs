@@ -29,9 +29,16 @@ export function Bind(callback) {
 }
 
 /**
- * Class representing a custom element with data bindings.
+ * The main html.js object.
  */
 export default {
+  /**
+   * Recursively merges properties of the source object into the target object.
+   *
+   * @param {Object} target - The target object to merge properties into.
+   * @param {Object} source - The source object to merge properties from.
+   * @returns {Object} The merged target object.
+   */
   deepMerge(target, source) {
     for (const key in source) {
       if (source[key] && typeof source[key] === "object") {
@@ -46,12 +53,24 @@ export default {
     return target;
   },
 
+  /**
+   * Creates a Proxy for the data object to handle get and set operations.
+   *
+   * @returns {Proxy} The Proxy object for the data.
+   */
   createDataProxy() {
     const self = this; // Capture the `this` context
 
     return new Proxy(
       {},
       {
+        /**
+         * Handles getting a value from the Proxy.
+         *
+         * @param {Object} target - The target object.
+         * @param {string} listenerId - The key to get the value for.
+         * @returns {*} The value of the specified key, or null if it does not exist.
+         */
         get(target, listenerId) {
           // Split the listenerId into an array of keys
           const keys = listenerId.split(".");
@@ -67,6 +86,16 @@ export default {
 
           return current; // Return the final value
         },
+
+        /**
+         * Handles setting a value in the Proxy.
+         *
+         * @param {Object} target - The target object.
+         * @param {string} listenerId - The key to set the value for.
+         * @param {*} value - The value to set.
+         * @param {Proxy} receiver - The Proxy object.
+         * @returns {boolean} True if the value was set successfully, false otherwise.
+         */
         set(target, listenerId, value, receiver) {
           // create a copy of the listener
           let listener = { ...self.data[listenerId] };
@@ -94,139 +123,193 @@ export default {
     );
   },
 
+  /**
+   * The data object for the template engine.
+   */
   data: null,
 
+  /**
+   * The bindings object for the template engine.
+   */
   bindings: {},
 
+  /**
+   * Initializes the template engine.
+   * @returns {void}
+   */
   init() {
     this.data = this.createDataProxy();
   },
 
-  // helper function to generate a unique id
+  /**
+   * Generates a unique ID.
+   * @returns {string} The unique ID.
+   */
   generateUniqueId() {
     return "_" + Math.random().toString(36).substr(2, 9);
   },
 
-  // helper function to convert camelCase to hyphenated format
+  /**
+   * Converts a camelCase string to a hyphenated string.
+   * @param {string} str - The camelCase string to convert.
+   * @returns {string} The hyphenated string.
+   */
   camelToHyphen(str) {
     return str.replace(/[A-Z]/g, (match) => "-" + match.toLowerCase());
   },
 
+  /**
+   * Sets an attribute on an element.
+   * @param {Element} element - The element to set the attribute on.
+   * @param {string} key - The key of the attribute.
+   * @param {string} value - The value of the attribute.
+   * @param {string} listenerId - The ID of the listener.
+   * @param {number} depth - The depth of the rendering.
+   * @returns {void}
+   */
   setElementAttribute(element, key, value, listenerId, depth) {
     const listener = this.data[listenerId];
 
-    if (
-      key !== "children" &&
-      key !== "prepend" &&
-      key !== "append" &&
-      key !== "child" &&
-      key !== "tagName" &&
-      key !== "textContent" &&
-      key !== "innerHTML" &&
-      key !== "if" &&
-      key !== "style"
-    ) {
-      // clear out the attribute before we set it
-      element.removeAttribute(key);
+    const nonAttributes = [
+      "children",
+      "prepend",
+      "append",
+      "child",
+      "tagName",
+      "textContent",
+      "innerHTML",
+      "if",
+      "style",
+    ];
 
-      // Check if the key contains any uppercase letters
-      const hasUpperCase = /[A-Z]/.test(key);
-
-      if (hasUpperCase) {
-        element.setAttributeNS(null, key, value);
-      } else {
-        element.setAttribute(key, value);
-      }
+    if (!nonAttributes.includes(key)) {
+      this.setAttribute(element, key, value);
     } else if (key === "style") {
-      let style = "";
-      // for styles, we can accept either a string or an object
-      if (typeof value === "string") {
-        style = value;
-      } else if (typeof value === "object") {
-        for (let key in value) {
-          // if the key already has a hyphen, then just use it, otherwise de-camlize it
-          const property = key.includes("-") ? key : this.camelToHyphen(key);
-
-          style = style + property + ":" + value[key] + ";";
-        }
-      }
-
-      element.setAttribute("style", style);
+      this.setStyle(element, value);
     } else if (key === "innerHTML") {
-      // clear out the innerHTML before we set it
-      element.innerHTML = "";
-
-      if (element[key] !== undefined && key === "innerHTML") {
-        element[key] += value; // Append the new value to the existing HTML
-      } else {
-        element[key] = value; // Set the value directly
-      }
+      this.setInnerHTML(element, value);
     } else if (key === "prepend") {
-      // check if this is an object, otherwise we
-      // just need to add it as textContent
-      if (typeof value !== "object") {
-        element.prepend(document.createTextNode(value));
-      } else {
-        const childElement = this.render(
-          value,
-          data,
-          null,
-          listenerId,
-          depth + 1
-        );
-        if (childElement !== null) {
-          element.prepend(childElement);
-        }
-      }
+      this.prependChild(element, value, listenerId, depth);
     } else if (key === "children" || key === "child") {
-      let children = key === "children" ? value : [value];
-
-      // we need to clear out the element's children before we add new ones
-      if (element.children.length > 0 || value === null) {
-        this.clearChildren(element);
-
-        // if the value is null, then we are just clearing out the children
-        if (value === null) {
-          return;
-        }
-      }
-
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-
-        const childElement = this.render(
-          child,
-          listener,
-          null,
-          listenerId,
-          depth + 1
-        );
-
-        if (childElement !== null) {
-          element.appendChild(childElement);
-        }
-      }
+      this.setChildren(element, key, value, listener, listenerId, depth);
     } else if (key === "textContent") {
-      // clear out the textContent before we set it
-      element.textContent = "";
-
-      element.appendChild(document.createTextNode(value));
+      this.setTextContent(element, value);
     } else if (key === "append") {
-      // check if this is an object, otherwise we
-      // just need to add it as textContent
-      if (typeof value !== "object") {
-        element.appendChild(document.createTextNode(value));
-      } else {
-        const childElement = this.render(
-          value,
-          data,
-          null,
-          listenerId,
-          depth + 1
-        );
-        if (childElement !== null) {
-          element.appendChild(childElement);
-        }
+      this.appendChild(element, value, listenerId, depth);
+    }
+  },
+
+  /**
+   * Sets an attribute on an element.
+   * @param {Element} element - The element to set the attribute on.
+   * @param {string} key - The key of the attribute.
+   * @param {string} value - The value of the attribute.
+   * @returns {void}
+   */
+  setAttribute(element, key, value) {
+    element.removeAttribute(key);
+    const hasUpperCase = /[A-Z]/.test(key);
+    if (hasUpperCase) {
+      element.setAttributeNS(null, key, value);
+    } else {
+      element.setAttribute(key, value);
+    }
+  },
+
+  /**
+   * Sets the style of an element.
+   * @param {Element} element - The element to set the style on.
+   * @param {string|Object} value - The style to set.
+   * @returns {void}
+   */
+  setStyle(element, value) {
+    let style = "";
+    if (typeof value === "string") {
+      style = value;
+    } else if (typeof value === "object") {
+      for (let key in value) {
+        const property = key.includes("-") ? key : this.camelToHyphen(key);
+        style += `${property}:${value[key]};`;
+      }
+    }
+    element.setAttribute("style", style);
+  },
+
+  /**
+   * Sets the innerHTML of an element.
+   * @param {Element} element - The element to set the inner HTML on.
+   * @param {string} value - The inner HTML to set.
+   * @returns {void}
+   */
+  setInnerHTML(element, value) {
+    element.innerHTML = "";
+    element.innerHTML = value;
+  },
+
+  /**
+   * Prepends a child to an element.
+   * @param {Element} element - The element to prepend the child to.
+   * @param {string|Object} value - The value to prepend.
+   * @param {number} depth - The depth of the rendering.
+   * @returns {void}
+   */
+  prependChild(element, value, depth) {
+    if (typeof value !== "object") {
+      element.prepend(document.createTextNode(value));
+    } else {
+      const childElement = this.render(value, null, depth + 1);
+      if (childElement !== null) {
+        element.prepend(childElement);
+      }
+    }
+  },
+
+  /**
+   * Sets the children of an element.
+   * @param {Element} element - The element to set the children on.
+   * @param {string} key - The key of the children.
+   * @param {Array} value - The value of the children.
+   * @param {number} depth - The depth of the rendering.
+   */
+  setChildren(element, key, value, depth) {
+    const children = key === "children" ? value : [value];
+    if (element.children.length > 0 || value === null) {
+      this.clearChildren(element);
+      if (value === null) return;
+    }
+    children.forEach((child) => {
+      const childElement = this.render(child, null, depth + 1);
+      if (childElement !== null) {
+        element.appendChild(childElement);
+      }
+    });
+  },
+
+  /**
+   * Sets the text content of an element.
+   * @param {Element} element - The element to set the text content on.
+   * @param {string} value - The value of the text content.
+   * @returns {void}
+   */
+  setTextContent(element, value) {
+    element.textContent = "";
+    element.appendChild(document.createTextNode(value));
+  },
+
+  /**
+   * Appends a child
+   * @param {Element} element - The element to append the child to.
+   * @param {string|Object} value - The value to append.
+   * @param {number} depth - The depth of the rendering.
+   * @returns {void}
+   */
+  appendChild(element, value, depth) {
+    if (typeof value !== "object") {
+      element.appendChild(document.createTextNode(value));
+    } else {
+      const childElement = this.render(value, null, depth + 1);
+      if (childElement !== null) {
+        element.appendChild(childElement);
       }
     }
   },
@@ -257,257 +340,212 @@ export default {
    * Renders the template into HTML.
    *
    * @param {Object} template - The JSON object representing the template.
-   * @param {Object} [data=null] - The data to bind to the template.
-   * @param {function} callback - The callback function to call after rendering.
-   * @param {string} [listenerId=null] - The ID to bind the data to.
+   * @param {function|string} [callbackOrQuery] - The callback function to call after rendering or a query for an element to append the new element to.
    * @param {number} [depth=0] - The depth of the rendering.
-   * @returns {Proxy|null} The proxy object if data is not null, otherwise null.
+   * @returns {String|Element|null} The HTML string of the element, an Element object, or null if there is a callbackOrQuery parameter
    */
-  render(template, callback, depth = 0) {
-    if (template === null || template === undefined) {
+  render(template, callbackOrQuery, depth = 0) {
+    if (!template) {
       return null;
     }
 
-    // start by creating the element
-    let element;
+    // Check if the template has an "if" property and if it's false, return null
+    if (template.if === false) {
+      return null;
+    }
 
-    // check to see if the template has an "if" property, and check if it is true
-    // or not - if not true, they we just don't render anything
-    if (Object.keys(template).includes("if")) {
-      // then check it if is false
-      if (!template.if) {
-        return null;
+    // If the template is a string, return a text node
+    if (typeof template === "string") {
+      return document.createTextNode(template);
+    }
+
+    // Create the element
+    const tagName = template.tagName || "div";
+    const element = document.createElementNS(
+      this.getNamespace(tagName),
+      tagName
+    );
+
+    // Process each key/value pair in the template
+    Object.keys(template).forEach((key) => {
+      let value = template[key];
+
+      if (this.isStringifiedFunction(value)) {
+        value = this.parseStringifiedFunction(value);
+      }
+
+      if (typeof value === "function") {
+        this.processFunctionValue(element, key, value, depth);
+      } else if (value !== null) {
+        this.setElementAttribute(element, key, value, null, depth);
+      }
+    });
+
+    // Handle server-side rendering
+    if (isServer && depth === 0) {
+      return this.handleServerSideRendering(element);
+    } else {
+      if (callbackOrQuery) {
+        if (typeof callbackOrQuery === "function") {
+          callbackOrQuery(element);
+        } else {
+          document.querySelector(callbackOrQuery).appendChild(element);
+        }
+      } else {
+        return element;
       }
     }
+  },
 
-    // if this is just a string and not actually an object,
-    // the we just need to return the text
-    if (typeof template === "string") {
-      element = document.createTextNode(template);
-      return element;
-    }
-
-    // set the tagName
-    let tagName = template.tagName !== undefined ? template.tagName : "div";
-
+  /**
+   * Gets the namespace for the specified tag name.
+   * @param {string} tagName - The tag name to get the namespace for.
+   * @returns {string} The namespace for the specified tag name.
+   */
+  getNamespace(tagName) {
     const namespaces = {
       svg: "http://www.w3.org/2000/svg",
       math: "http://www.w3.org/1998/Math/MathML",
       xlink: "http://www.w3.org/1999/xlink",
       xml: "http://www.w3.org/XML/1998/namespace",
       xmlns: "http://www.w3.org/2000/xmlns/",
-      // Default namespace for XHTML
       default: "http://www.w3.org/1999/xhtml",
     };
+    return namespaces[tagName] || namespaces.default;
+  },
 
-    const getNamespace = (tagName) => {
-      if (tagName in namespaces) {
-        return namespaces[tagName];
-      }
-      // Default to XHTML namespace
-      return namespaces.default;
-    };
-
-    element = document.createElementNS(getNamespace(tagName), tagName);
-
-    /**
-     * Checks if a string represents a stringified function.
-     *
-     * @param {string} str - The string to check.
-     * @returns {boolean} True if the string represents a function, false otherwise.
-     */
-    function isStringifiedFunction(str) {
-      if (typeof str !== "string") {
-        return false;
-      }
-      // Regular expression to check for function declaration or arrow function
-      const functionPattern = /^\s*(function\s*\(|\(\s*[^\)]*\)\s*=>)/;
-      return functionPattern.test(str);
+  /**
+   * Checks if the specified string is a stringified function.
+   * @param {string} str - The string to check.
+   * @returns {boolean} True if the string is a stringified function, false otherwise.
+   */
+  isStringifiedFunction(str) {
+    if (typeof str !== "string") {
+      return false;
     }
+    const functionPattern = /^\s*(function\s*\(|\(\s*[^\)]*\)\s*=>)/;
+    return functionPattern.test(str);
+  },
 
-    /**
-     * Converts a stringified function to a format that the Function constructor can understand.
-     *
-     * @param {string} str - The stringified function.
-     * @returns {Function} The parsed function.
-     */
-    function parseStringifiedFunction(str) {
-      if (isStringifiedFunction(str)) {
-        // Wrap the arrow function in parentheses and return it
-        return new Function(`return (${str})`)();
-      }
-      throw new Error("Invalid stringified function");
+  /**
+   * Parses a stringified function into a function.
+   * @param {string} str - The stringified function to parse.
+   * @returns {Function} The parsed function.
+   */
+  parseStringifiedFunction(str) {
+    if (this.isStringifiedFunction(str)) {
+      return new Function(`return (${str})`)();
     }
+    throw new Error("Invalid stringified function");
+  },
 
-    // go through every key/value pair that is
-    // an html property
-    for (var key in template) {
-      let value = template[key];
+  /**
+   * Processes a function value in the template.
+   * @param {Element} element - The element to process the function value for.
+   * @param {string} key - The key of the function value.
+   * @param {Function} value - The function value to process.
+   * @param {number} depth - The depth of the rendering.
+   * @returns {void}
+   */
+  processFunctionValue(element, key, value, depth) {
+    const functStr = value.toString();
+    const paramsStr = functStr.slice(
+      functStr.indexOf("(") + 1,
+      functStr.indexOf(")")
+    );
+    const paramsArray = paramsStr.split(",").map((param) => param.trim());
+    const listenerId = paramsArray.length > 0 ? paramsArray[0] : null;
 
-      if (isStringifiedFunction(value)) {
-        // convert it back to a function
-        value = parseStringifiedFunction(value);
+    if (!isServer) {
+      if (!this.bindings[listenerId]) {
+        this.bindings[listenerId] = [];
       }
-
-      // check to see if the value is a function or a stringified function
-
-      if (typeof value === "function") {
-        // find the value of the parameter passed to the function
-        const functStr = value.toString();
-        const paramsStr = functStr.slice(
-          functStr.indexOf("(") + 1,
-          functStr.indexOf(")")
-        );
-        const paramsArray = paramsStr.split(",").map((param) => param.trim());
-        const listenerId = paramsArray.length > 0 ? paramsArray[0] : null;
-
-        // add the binding to the bindings object
-        if (!isServer) {
-          // create the bindings array if it doesn't exist
-          if (!this.bindings[listenerId]) {
-            this.bindings[listenerId] = [];
-          }
-
-          this.bindings[listenerId].push({
-            element,
-            func: value,
-            property: key,
-          });
-        } else {
-          // store it all to render server-side
-          element.dataset.listenerId = listenerId;
-
-          // Check if the key is camelCase and convert it to hyphenated format if necessary
-          const isCamelCase = (str) => {
-            return /[a-z][A-Z]/.test(str);
-          };
-
-          element.setAttribute(
-            `data-bind-to-${isCamelCase(key) ? this.camelToHyphen(key) : key}`,
-            value
-          );
-        }
-
-        const result = value(this.data[listenerId], e, c);
-        value = result;
-
-        if (value !== null) {
-          this.setElementAttribute(element, key, value, listenerId, depth);
-        }
-      } else {
-        if (value !== null) {
-          this.setElementAttribute(element, key, value, null, depth);
-        }
-      }
-    }
-
-    // if we have a callback, then we need to call it
-    if (callback) {
-      callback(element, data);
-    }
-
-    // if this is the root element, then we need to return the element differently
-    // if we are on server or not
-    if (isServer && depth === 0) {
-      // if we are sending a full html document, then we need to append a copy of
-      // this file as an inline tag before any other script tags at the end of the body
-      if (element.tagName === "HTML") {
-        // Create an inline script tag that dynamically imports the module
-        const script = document.createElement("script");
-        script.textContent = `
-          const App = (await import("${
-            process.env.NODE_ENV === "production"
-              ? process.env.CDN_BASE_URL
-              : ""
-          }/dist/premmio/htmljs/html.js")).default;
-          App.init();
-          window.App = App;
-        `;
-
-        // pass the data along to the server, if there is any to pass along
-        if (Object.keys(this.data).length > 0) {
-          script.textContent += `
-            const parsedData = JSON.parse('${JSON.stringify(this.data)}');
-            Object.keys(parsedData).forEach(key => {
-              App.data[key] = parsedData[key];
-            });
-
-            // we need to find all elements on screen with a data-listener-id attribute
-            // and then set up the listeners for them
-            const elements = document.querySelectorAll("[data-listener-id]");
-
-            elements.forEach((element) => {
-              const listenerId = element.getAttribute("data-listener-id");
-
-              // create the bindings array if it doesn't exist
-              if (!App.bindings[listenerId]) {
-                App.bindings[listenerId] = [];
-              }
-
-              const hyphenToCamelCase = (str) => {
-                return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-              };
-              
-              Array.from(element.attributes).forEach((attr) => {
-                if (attr.name.startsWith("data-bind-to-")) {
-                  // Remove the "data-bind-to-" prefix to get the property name
-                  let property = attr.name.slice("data-bind-to-".length);
-              
-                  // If the property name does not contain "data-", convert it to camelCase
-                  if (!property.startsWith("data-")) {
-                    property = hyphenToCamelCase(property);
-                  }
-              
-                  try {
-                    const func = new Function("return " + attr.value)();
-                    if (typeof func === "function") {
-                      App.bindings[listenerId].push({
-                        element,
-                        property,
-                        func,
-                      });
-                    }
-                  } catch (e) {
-                    // Ignore attributes that are not functions
-                  }
-                }
-              });
-            });
-          `;
-        }
-
-        script.setAttribute("type", "module");
-        script.setAttribute("defer", true);
-
-        // Append the script tag to the end of the body but before any other script tags that may be there
-        const body = element.querySelector("body");
-        const scripts = body.querySelectorAll("script");
-
-        if (scripts.length > 0) {
-          body.insertBefore(script, scripts[0]);
-        } else {
-          body.appendChild(script);
-        }
-      }
-
-      // add the !DOCTYPE tag to the beginning of the document and return the string
-      return `<!DOCTYPE html>${element.outerHTML}`;
+      this.bindings[listenerId].push({ element, func: value, property: key });
     } else {
-      // if we passed in data and are the surface, then we need to return the listener
-      if (depth === 0) {
-        // if no data and no callback, return element
-        if (!data && !callback) {
-          return element;
-        } else {
-          return listener;
-        }
-      } else {
-        // otherwise, we need to return the element we just created
-        return element;
-      }
+      element.dataset.listenerId = listenerId;
+      const isCamelCase = (str) => /[a-z][A-Z]/.test(str);
+      element.setAttribute(
+        `data-bind-to-${isCamelCase(key) ? this.camelToHyphen(key) : key}`,
+        value
+      );
+    }
+
+    const result = value(this.data[listenerId], e, c);
+    if (result !== null) {
+      this.setElementAttribute(element, key, result, listenerId, depth);
     }
   },
 
+  /**
+   * Handles server-side rendering of the template.
+   * @param {Element} element - The element to render.
+   * @returns {string} The rendered HTML
+   */
+  handleServerSideRendering(element) {
+    if (element.tagName === "HTML") {
+      const script = document.createElement("script");
+      script.textContent = `
+        const App = (await import("${
+          process.env.NODE_ENV === "production" ? process.env.CDN_BASE_URL : ""
+        }/dist/premmio/htmljs/html.js")).default;
+        App.init();
+        window.App = App;
+      `;
+
+      if (Object.keys(this.data).length > 0) {
+        script.textContent += `
+          const parsedData = JSON.parse('${JSON.stringify(this.data)}');
+          Object.keys(parsedData).forEach(key => {
+            App.data[key] = parsedData[key];
+          });
+  
+          const elements = document.querySelectorAll("[data-listener-id]");
+          elements.forEach((element) => {
+            const listenerId = element.getAttribute("data-listener-id");
+            if (!App.bindings[listenerId]) {
+              App.bindings[listenerId] = [];
+            }
+            const hyphenToCamelCase = (str) => str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+            Array.from(element.attributes).forEach((attr) => {
+              if (attr.name.startsWith("data-bind-to-")) {
+                let property = attr.name.slice("data-bind-to-".length);
+                if (!property.startsWith("data-")) {
+                  property = hyphenToCamelCase(property);
+                }
+                try {
+                  const func = new Function("return " + attr.value)();
+                  if (typeof func === "function") {
+                    App.bindings[listenerId].push({ element, property, func });
+                  }
+                } catch (e) {
+                  // Ignore attributes that are not functions
+                }
+              }
+            });
+          });
+        `;
+      }
+
+      script.setAttribute("type", "module");
+      script.setAttribute("defer", true);
+
+      const body = element.querySelector("body");
+      const scripts = body.querySelectorAll("script");
+      if (scripts.length > 0) {
+        body.insertBefore(script, scripts[0]);
+      } else {
+        body.appendChild(script);
+      }
+    }
+
+    return `<!DOCTYPE html>${element.outerHTML}`;
+  },
+
+  /**
+   * Clears the children of an element.
+   * @param {Element} element - The element to clear the children of.
+   * @returns {void}
+   */
   clearChildren(element) {
     // we need to check this.bindings for any reference to any of the children that are being removed
     // and remove their bindings
