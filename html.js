@@ -32,23 +32,89 @@ export function Bind(callback) {
  * Class representing a custom element with data bindings.
  */
 export default {
-  // where we store the data that is bound to the elements
-  data: {},
+  deepMerge(target, source) {
+    for (const key in source) {
+      if (source[key] && typeof source[key] === "object") {
+        if (!target[key] || typeof target[key] !== "object") {
+          target[key] = {};
+        }
+        this.deepMerge(target[key], source[key]);
+      } else {
+        target[key] = source[key];
+      }
+    }
+    return target;
+  },
 
-  // where we store the user info
-  user: {},
+  createDataProxy() {
+    const self = this; // Capture the `this` context
+
+    return new Proxy(
+      {},
+      {
+        get(target, listenerId) {
+          // Split the listenerId into an array of keys
+          const keys = listenerId.split(".");
+          let current = target;
+
+          // Traverse the target object to get the value
+          for (let i = 0; i < keys.length; i++) {
+            if (current[keys[i]] === undefined) {
+              return null; // Return null if any part of the path does not exist
+            }
+            current = current[keys[i]]; // Move to the next level in the object hierarchy
+          }
+
+          return current; // Return the final value
+        },
+        set(target, listenerId, value, receiver) {
+          // create a copy of the listener
+          let listener = { ...self.data[listenerId] };
+
+          // merge the new value into the listener, only overwriting the values that are being updated
+          listener = self.deepMerge(listener, value);
+
+          // Use Reflect.set to perform the assignment and get the result
+          const result = Reflect.set(target, listenerId, listener, receiver);
+
+          // Get the bindings for this listenerId
+          const bindings = self.bindings[listenerId]; // Use the captured `this` context
+
+          // If there are bindings, loop through them and emit the binding
+          if (bindings) {
+            bindings.forEach((binding) => {
+              self.emitBinding(listenerId, binding); // Use the captured `this` context
+            });
+          }
+
+          // Return the result of the Reflect.set operation
+          return result;
+        },
+      }
+    );
+  },
+
+  data: null,
+
+  bindings: {},
+
+  init() {
+    this.data = this.createDataProxy();
+  },
 
   // helper function to generate a unique id
-  generateUniqueId: () => {
+  generateUniqueId() {
     return "_" + Math.random().toString(36).substr(2, 9);
   },
 
   // helper function to convert camelCase to hyphenated format
-  camelToHyphen: (str) => {
+  camelToHyphen(str) {
     return str.replace(/[A-Z]/g, (match) => "-" + match.toLowerCase());
   },
 
-  setElementAttribute: (element, key, value, data, bindId, depth) => {
+  setElementAttribute(element, key, value, listenerId, depth) {
+    const listener = this.data[listenerId];
+
     if (
       key !== "children" &&
       key !== "prepend" &&
@@ -101,7 +167,13 @@ export default {
       if (typeof value !== "object") {
         element.prepend(document.createTextNode(value));
       } else {
-        const childElement = this.render(value, data, null, bindId, depth + 1);
+        const childElement = this.render(
+          value,
+          data,
+          null,
+          listenerId,
+          depth + 1
+        );
         if (childElement !== null) {
           element.prepend(childElement);
         }
@@ -122,7 +194,13 @@ export default {
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
 
-        const childElement = this.render(child, data, null, bindId, depth + 1);
+        const childElement = this.render(
+          child,
+          listener,
+          null,
+          listenerId,
+          depth + 1
+        );
 
         if (childElement !== null) {
           element.appendChild(childElement);
@@ -139,7 +217,13 @@ export default {
       if (typeof value !== "object") {
         element.appendChild(document.createTextNode(value));
       } else {
-        const childElement = this.render(value, data, null, bindId, depth + 1);
+        const childElement = this.render(
+          value,
+          data,
+          null,
+          listenerId,
+          depth + 1
+        );
         if (childElement !== null) {
           element.appendChild(childElement);
         }
@@ -152,60 +236,21 @@ export default {
    * @param {string} binding the binding to review
    * @param {Object} data the data object the value is coming from
    */
-  emitBinding: (element, property, bindId, func) => {
-    const data = this.data[bindId];
+  emitBinding(listenerId, binding) {
+    const { element, func, property } = binding;
+
     let value;
 
     // for server-side binding, the func will be a string so we
     // will need to parse it
     if (typeof func === "string") {
-      const newFunc = new Function("data", `return ${func}`)(data);
-      value = newFunc(data, e, c);
+      const newFunc = new Function("data", `return ${func}`)(this.data);
+      value = newFunc(this.data[listenerId], e, c);
     } else {
-      value = func(data, e, c);
+      value = func(this.data[listenerId], e, c);
     }
 
-    this.setElementAttribute(element, property, value, data, bindId, 0);
-  },
-
-  // where we store the different bindings for the different objects
-  bindings: {},
-
-  // where we store server data, if we have any
-  serverData: null,
-
-  /**
-   * Creates a proxy object that will allow us to listen for changes.
-   *
-   * @param {Object} obj - The object to create a proxy for.
-   * @param {function} callback - The callback function to call on changes.
-   * @param {string} [path=""] - The path to the object.
-   * @returns {Proxy} The proxy object.
-   */
-  createProxy: (obj, callback, path = "") => {
-    const handler = {
-      get: (target, prop, receiver) => {
-        const value = Reflect.get(target, prop, receiver);
-        // If the value is an object, create a proxy for it
-        if (typeof value === "object" && value !== null) {
-          return this.createProxy(
-            value,
-            callback,
-            `${path}${path ? "." : ""}${prop}`
-          );
-        }
-        return value;
-      },
-      set: (target, prop, value, receiver) => {
-        const oldValue = target[prop];
-        const result = Reflect.set(target, prop, value, receiver);
-        if (oldValue !== value) {
-          callback(target, `${path}${path ? "." : ""}${prop}`, oldValue, value);
-        }
-        return result;
-      },
-    };
-    return new Proxy(obj, handler);
+    this.setElementAttribute(element, property, value, listenerId, 0);
   },
 
   /**
@@ -214,58 +259,11 @@ export default {
    * @param {Object} template - The JSON object representing the template.
    * @param {Object} [data=null] - The data to bind to the template.
    * @param {function} callback - The callback function to call after rendering.
-   * @param {string} [bindId=null] - The ID to bind the data to.
+   * @param {string} [listenerId=null] - The ID to bind the data to.
    * @param {number} [depth=0] - The depth of the rendering.
    * @returns {Proxy|null} The proxy object if data is not null, otherwise null.
    */
-  render: (template, data = null, callback, bindId = null, depth = 0) => {
-    // this is an object of all the elements that have been bound to
-    // a piece of data, organized by the data key - the element itself is the element
-    // that is created at the end of this function (and is added to this object if the
-    // data parametert is not null) as well as the parameters that are used to bind the
-    // data (ie, the attribute, greater than, less than, etc)
-
-    // create a unique id
-    if (bindId === null) {
-      bindId = data ? data._id : this.generateUniqueId();
-    }
-
-    if (this.bindings[bindId] === undefined) {
-      this.bindings[bindId] = [];
-    }
-
-    let listener;
-
-    // if data is not null, then we need to create a proxy, which will be returned
-    // at the end of the function
-    if (data !== null) {
-      if (isServer) {
-        this.serverData = JSON.stringify(data);
-      } else {
-        // Callback function to handle updates
-        const updateBindings = (target, prop, oldValue, newValue) => {
-          // Directly use the prop as the key
-          const currentBindings = this.bindings[bindId];
-
-          // Check if the prop exists in the current bindings
-          if (currentBindings) {
-            currentBindings.forEach((binding) => {
-              // Get the element from the binding object
-              const element = binding.element,
-                func = binding.func,
-                property = binding.property;
-
-              // Run the setUpBindings function
-              this.emitBinding(element, property, bindId, func);
-            });
-          }
-        };
-
-        // Create the proxy
-        listener = this.createProxy(data, updateBindings.bind(this));
-      }
-    }
-
+  render(template, callback, depth = 0) {
     if (template === null || template === undefined) {
       return null;
     }
@@ -354,27 +352,30 @@ export default {
       // check to see if the value is a function or a stringified function
 
       if (typeof value === "function") {
+        // find the value of the parameter passed to the function
+        const functStr = value.toString();
+        const paramsStr = functStr.slice(
+          functStr.indexOf("(") + 1,
+          functStr.indexOf(")")
+        );
+        const paramsArray = paramsStr.split(",").map((param) => param.trim());
+        const listenerId = paramsArray.length > 0 ? paramsArray[0] : null;
+
         // add the binding to the bindings object
         if (!isServer) {
-          if (this.bindings[bindId] === undefined) {
-            this.bindings[bindId] = [];
+          // create the bindings array if it doesn't exist
+          if (!this.bindings[listenerId]) {
+            this.bindings[listenerId] = [];
           }
 
-          this.bindings[bindId].push({
+          this.bindings[listenerId].push({
             element,
             func: value,
             property: key,
           });
-
-          const result = value(data);
-          value = result;
-
-          if (value !== null) {
-            this.setElementAttribute(element, key, value, data, bindId, depth);
-          }
         } else {
           // store it all to render server-side
-          element.dataset.bindId = bindId;
+          element.dataset.listenerId = listenerId;
 
           // Check if the key is camelCase and convert it to hyphenated format if necessary
           const isCamelCase = (str) => {
@@ -386,9 +387,16 @@ export default {
             value
           );
         }
+
+        const result = value(this.data[listenerId], e, c);
+        value = result;
+
+        if (value !== null) {
+          this.setElementAttribute(element, key, value, listenerId, depth);
+        }
       } else {
         if (value !== null) {
-          this.setElementAttribute(element, key, value, data, bindId, depth);
+          this.setElementAttribute(element, key, value, null, depth);
         }
       }
     }
@@ -407,104 +415,65 @@ export default {
         // Create an inline script tag that dynamically imports the module
         const script = document.createElement("script");
         script.textContent = `
-                const HTMLJS = (await import("${
-                  process.env.NODE_ENV === "production"
-                    ? process.env.CDN_BASE_URL
-                    : ""
-                }/dist/premmio/htmljs/html.js")).default;
-                window.App = new HTMLJS();
-            `;
+          const App = (await import("${
+            process.env.NODE_ENV === "production"
+              ? process.env.CDN_BASE_URL
+              : ""
+          }/dist/premmio/htmljs/html.js")).default;
+          App.init();
+          window.App = App;
+        `;
 
-        // add the server data if we have it
-        if (this.serverData) {
+        // pass the data along to the server, if there is any to pass along
+        if (Object.keys(this.data).length > 0) {
           script.textContent += `
-              // we need to find all elements on screen with a data-bind-id attribute
-              // and then set up the listeners for them
-              const elements = document.querySelectorAll("[data-bind-id]");
+            const parsedData = JSON.parse('${JSON.stringify(this.data)}');
+            Object.keys(parsedData).forEach(key => {
+              App.data[key] = parsedData[key];
+            });
 
-              elements.forEach((element) => {
-                const bindId = element.getAttribute("data-bind-id");
-                const data = JSON.parse('${this.serverData}');
+            // we need to find all elements on screen with a data-listener-id attribute
+            // and then set up the listeners for them
+            const elements = document.querySelectorAll("[data-listener-id]");
 
-                // Remove the attributes from the element
-                element.removeAttribute("data-bind-id");
+            elements.forEach((element) => {
+              const listenerId = element.getAttribute("data-listener-id");
 
-                // Store all bindings in an array
-                const bindings = [];
+              // create the bindings array if it doesn't exist
+              if (!App.bindings[listenerId]) {
+                App.bindings[listenerId] = [];
+              }
 
-                const hyphenToCamelCase = (str) => {
-                  return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-                };
-                
-                Array.from(element.attributes).forEach((attr) => {
-                  if (attr.name.startsWith("data-bind-to-")) {
-                    // Remove the "data-bind-to-" prefix to get the property name
-                    let propertyName = attr.name.slice("data-bind-to-".length);
-                
-                    // If the property name does not contain "data-", convert it to camelCase
-                    if (!propertyName.startsWith("data-")) {
-                      propertyName = hyphenToCamelCase(propertyName);
-                    }
-                
-                    try {
-                      const func = new Function("return " + attr.value)();
-                      if (typeof func === "function") {
-                        bindings.push({
-                          property: propertyName,
-                          func,
-                        });
-                        // Remove the attribute from the element
-                        element.removeAttribute(attr.name);
-                      }
-                    } catch (e) {
-                      // Ignore attributes that are not functions
-                    }
+              const hyphenToCamelCase = (str) => {
+                return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+              };
+              
+              Array.from(element.attributes).forEach((attr) => {
+                if (attr.name.startsWith("data-bind-to-")) {
+                  // Remove the "data-bind-to-" prefix to get the property name
+                  let property = attr.name.slice("data-bind-to-".length);
+              
+                  // If the property name does not contain "data-", convert it to camelCase
+                  if (!property.startsWith("data-")) {
+                    property = hyphenToCamelCase(property);
                   }
-                });
-
-                // if a proxy object is not already created for the bindId, then create it
-                if (App.data[bindId] === undefined) {
-                  // Callback function to handle updates
-                  const updateBindings = (target, prop, oldValue, newValue) => {
-                    // Directly use the prop as the key
-                    const currentBindings = App.bindings[bindId];
-
-
-                    // Check if the prop exists in the current bindings
-                    if (currentBindings) {
-                      currentBindings.forEach((binding) => {
-                        // Get the element from the binding object
-                        const element = binding.element,
-                          func = binding.func,
-                          property = binding.property;
-
-                        // Run the setUpBindings function
-                        App.emitBinding(element, property, bindId, func);
+              
+                  try {
+                    const func = new Function("return " + attr.value)();
+                    if (typeof func === "function") {
+                      App.bindings[listenerId].push({
+                        element,
+                        property,
+                        func,
                       });
                     }
-                  };
-
-                  App.data[bindId] = App.createProxy(data, updateBindings.bind(App));
+                  } catch (e) {
+                    // Ignore attributes that are not functions
+                  }
                 }
-
-                // if the bindings object is not already created for the bindId, then create it
-                if (App.bindings[bindId] === undefined) {
-                  App.bindings[bindId] = [];
-                }
-
-                // Add the element and its bindings to the App.bindings object
-                bindings.forEach((binding) => {
-                  App.bindings[bindId].push({
-                    element,
-                    func: binding.func,
-                    property: binding.property,
-                  });
-
-                  // Run the binding once to initialize the element
-                  App.emitBinding(element, binding.property, bindId, binding.func);
-                });
               });
-            `;
+            });
+          `;
         }
 
         script.setAttribute("type", "module");
@@ -539,104 +508,7 @@ export default {
     }
   },
 
-  /**
-   * Creates elements based on the template and data.
-   *
-   * @param {Object} template - The template object.
-   * @param {Array|Object} data - The data to create elements with.
-   * @param {function} callback - The callback function to call after creation.
-   */
-  create: (template, data, callback) => {
-    if (Array.isArray(data)) {
-      data.forEach((dataItem) => {
-        // you can only create if you have data and that data has an _id
-        // so check for both of those and throw an error if they are not there
-        if (!dataItem._id) {
-          throw new Error("You must have data and that data must have an _id");
-        }
-
-        let templateCopy = { ...template };
-        // if the template is a function, pass the dataItem to it
-        if (typeof template === "function") {
-          templateCopy = template(dataItem);
-        }
-
-        this.data[dataItem._id] = this.render(templateCopy, dataItem, callback);
-      });
-    } else {
-      // you can only create if you have data and that data has an _id
-      // so check for both of those and throw an error if they are not there
-      if (!data || !data._id) {
-        throw new Error("You must have data and that data must have an _id");
-      }
-
-      this.data[data._id] = this.render(template, data, callback);
-    }
-  },
-
-  /**
-   * Updates the data and re-renders the template.
-   *
-   * @param {Object} data - The data to update.
-   * @param {function} callback - The callback function to call after updating.
-   */
-  update: (data, callback) => {
-    // First check if the data has an _id
-    if (!data._id) {
-      throw new Error("You must have data and that data must have an _id");
-    }
-
-    // Get the listener
-    const listener = this.data[data._id];
-
-    // First check to see if the listener exists
-    if (!listener) {
-      if (!callback) {
-        throw new Error("The listener does not exist");
-      } else {
-        callback(data);
-      }
-    } else {
-      // Recursive function to update nested objects
-      const updateObject = (target, source) => {
-        for (let key in source) {
-          if (source.hasOwnProperty(key)) {
-            if (Array.isArray(source[key])) {
-              // Directly assign the array, including empty arrays
-              target[key] = source[key];
-            } else if (
-              typeof source[key] === "object" &&
-              source[key] !== null
-            ) {
-              // If the target does not have the key, create an empty object
-              if (target[key] === undefined || target[key] === null) {
-                target[key] = {};
-              }
-              // Recursively update nested objects
-              updateObject(target[key], source[key]);
-            } else {
-              // Update the target with the source value
-              target[key] = source[key];
-            }
-          }
-        }
-      };
-
-      // Update the listener with the values provided in the data object
-      updateObject(listener, data);
-    }
-  },
-
-  /**
-   * Gets the data from the data object.
-   * @param {string} id the id of the data you want to get
-   * @returns
-   */
-  get: (id) => {
-    return this.data[id];
-  },
-
-  clearChildren: (element) => {
+  clearChildren(element) {
     // we need to check this.bindings for any reference to any of the children that are being removed
     // and remove their bindings
     // get all the children
@@ -653,37 +525,5 @@ export default {
       // then delete the child
       element.removeChild(child);
     });
-  },
-
-  destroy: (id) => {
-    // remove the listener from the data object
-    delete this.data[id];
-
-    // remove the binding from the bindings object
-    delete this.bindings[id];
-
-    // we also need to loop through the data object and remove any references to this data in any other data objects, checking child objects and ararys as well
-    const removeDataReferences = (data, id) => {
-      for (let key in data) {
-        if (data[key] === id) {
-          delete data[key];
-        } else if (typeof data[key] === "object") {
-          removeDataReferences(data[key], id);
-        } else if (Array.isArray(data[key])) {
-          data[key].forEach((item) => {
-            if (data === id) {
-              data[key].splice(data[key].indexOf(id), 1);
-            } else {
-              removeDataReferences(item, id);
-            }
-          });
-        }
-      }
-    };
-
-    // loop through the data object and remove any references to this data
-    for (let key in this.data) {
-      removeDataReferences(this.data[key], id);
-    }
   },
 };
