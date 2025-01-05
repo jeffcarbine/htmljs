@@ -33,6 +33,11 @@ export function Bind(callback) {
  */
 export default {
   /**
+   * The handlers object for the template engine.
+   */
+  handlers: {},
+
+  /**
    * Recursively merges properties of the source object into the target object.
    *
    * @param {Object} target - The target object to merge properties into.
@@ -54,7 +59,7 @@ export default {
   },
 
   /**
-   * Creates a Proxy for the data object to handle get and set operations.
+   * Creates a Proxy for the data object to handle get and set operations of bindings.
    *
    * @returns {Proxy} The Proxy object for the data.
    */
@@ -68,12 +73,12 @@ export default {
          * Handles getting a value from the Proxy.
          *
          * @param {Object} target - The target object.
-         * @param {string} listenerId - The key to get the value for.
+         * @param {string} bindingId - The key to get the value for.
          * @returns {*} The value of the specified key, or null if it does not exist.
          */
-        get(target, listenerId) {
-          // Split the listenerId into an array of keys
-          const keys = listenerId.split(".");
+        get(target, bindingId) {
+          // Split the bindingId into an array of keys
+          const keys = bindingId.split(".");
           let current = target;
 
           // Traverse the target object to get the value
@@ -91,28 +96,28 @@ export default {
          * Handles setting a value in the Proxy.
          *
          * @param {Object} target - The target object.
-         * @param {string} listenerId - The key to set the value for.
+         * @param {string} bindingId - The key to set the value for.
          * @param {*} value - The value to set.
          * @param {Proxy} receiver - The Proxy object.
          * @returns {boolean} True if the value was set successfully, false otherwise.
          */
-        set(target, listenerId, value, receiver) {
-          // create a copy of the listener
-          let listener = { ...self.data[listenerId] };
+        set(target, bindingId, value, receiver) {
+          // create a copy of the binding
+          let binding = { ...self.data[bindingId] };
 
-          // merge the new value into the listener, only overwriting the values that are being updated
-          listener = self.deepMerge(listener, value);
+          // merge the new value into the binding, only overwriting the values that are being updated
+          binding = self.deepMerge(binding, value);
 
           // Use Reflect.set to perform the assignment and get the result
-          const result = Reflect.set(target, listenerId, listener, receiver);
+          const result = Reflect.set(target, bindingId, binding, receiver);
 
-          // Get the bindings for this listenerId
-          const bindings = self.bindings[listenerId]; // Use the captured `this` context
+          // Get the handlers for this bindingId
+          const handlers = self.handlers[bindingId]; // Use the captured `this` context
 
-          // If there are bindings, loop through them and emit the binding
-          if (bindings) {
-            bindings.forEach((binding) => {
-              self.emitBinding(listenerId, binding); // Use the captured `this` context
+          // If there are handlers, loop through them and emit the binding
+          if (handlers) {
+            handlers.forEach((binding) => {
+              self.emitBinding(bindingId, binding); // Use the captured `this` context
             });
           }
 
@@ -127,11 +132,6 @@ export default {
    * The data object for the template engine.
    */
   data: null,
-
-  /**
-   * The bindings object for the template engine.
-   */
-  bindings: {},
 
   /**
    * Initializes the template engine.
@@ -163,12 +163,12 @@ export default {
    * @param {Element} element - The element to set the attribute on.
    * @param {string} key - The key of the attribute.
    * @param {string} value - The value of the attribute.
-   * @param {string} listenerId - The ID of the listener.
+   * @param {string} bindingId - The ID of the binding.
    * @param {number} depth - The depth of the rendering.
    * @returns {void}
    */
-  setElementAttribute(element, key, value, listenerId, depth) {
-    const listener = this.data[listenerId];
+  setElementAttribute(element, key, value, bindingId, depth) {
+    const binding = this.data[bindingId];
 
     const nonAttributes = [
       "children",
@@ -189,13 +189,13 @@ export default {
     } else if (key === "innerHTML") {
       this.setInnerHTML(element, value);
     } else if (key === "prepend") {
-      this.prependChild(element, value, listenerId, depth);
+      this.prependChild(element, value, bindingId, depth);
     } else if (key === "children" || key === "child") {
-      this.setChildren(element, key, value, listener, listenerId, depth);
+      this.setChildren(element, key, value, binding, bindingId, depth);
     } else if (key === "textContent") {
       this.setTextContent(element, value);
     } else if (key === "append") {
-      this.appendChild(element, value, listenerId, depth);
+      this.appendChild(element, value, bindingId, depth);
     }
   },
 
@@ -319,7 +319,7 @@ export default {
    * @param {string} binding the binding to review
    * @param {Object} data the data object the value is coming from
    */
-  emitBinding(listenerId, binding) {
+  emitBinding(bindingId, binding) {
     const { element, func, property } = binding;
 
     let value;
@@ -328,12 +328,12 @@ export default {
     // will need to parse it
     if (typeof func === "string") {
       const newFunc = new Function("data", `return ${func}`)(this.data);
-      value = newFunc(this.data[listenerId], e, c);
+      value = newFunc(this.data[bindingId], e, c);
     } else {
-      value = func(this.data[listenerId], e, c);
+      value = func(this.data[bindingId], e, c);
     }
 
-    this.setElementAttribute(element, property, value, listenerId, 0);
+    this.setElementAttribute(element, property, value, bindingId, 0);
   },
 
   /**
@@ -454,15 +454,15 @@ export default {
       functStr.indexOf(")")
     );
     const paramsArray = paramsStr.split(",").map((param) => param.trim());
-    const listenerId = paramsArray.length > 0 ? paramsArray[0] : null;
+    const bindingId = paramsArray.length > 0 ? paramsArray[0] : null;
 
     if (!isServer) {
-      if (!this.bindings[listenerId]) {
-        this.bindings[listenerId] = [];
+      if (!this.handlers[bindingId]) {
+        this.handlers[bindingId] = [];
       }
-      this.bindings[listenerId].push({ element, func: value, property: key });
+      this.handlers[bindingId].push({ element, func: value, property: key });
     } else {
-      element.dataset.listenerId = listenerId;
+      element.dataset.bindingId = bindingId;
       const isCamelCase = (str) => /[a-z][A-Z]/.test(str);
       element.setAttribute(
         `data-bind-to-${isCamelCase(key) ? this.camelToHyphen(key) : key}`,
@@ -470,9 +470,9 @@ export default {
       );
     }
 
-    const result = value(this.data[listenerId], e, c);
+    const result = value(this.data[bindingId], e, c);
     if (result !== null) {
-      this.setElementAttribute(element, key, result, listenerId, depth);
+      this.setElementAttribute(element, key, result, bindingId, depth);
     }
   },
 
@@ -499,11 +499,11 @@ export default {
             App.data[key] = parsedData[key];
           });
   
-          const elements = document.querySelectorAll("[data-listener-id]");
+          const elements = document.querySelectorAll("[data-binding-id]");
           elements.forEach((element) => {
-            const listenerId = element.getAttribute("data-listener-id");
-            if (!App.bindings[listenerId]) {
-              App.bindings[listenerId] = [];
+            const bindingId = element.getAttribute("data-binding-id");
+            if (!App.handlers[bindingId]) {
+              App.handlers[bindingId] = [];
             }
             const hyphenToCamelCase = (str) => str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
             Array.from(element.attributes).forEach((attr) => {
@@ -515,7 +515,7 @@ export default {
                 try {
                   const func = new Function("return " + attr.value)();
                   if (typeof func === "function") {
-                    App.bindings[listenerId].push({ element, property, func });
+                    App.handlers[bindingId].push({ element, property, func });
                   }
                 } catch (e) {
                   // Ignore attributes that are not functions
@@ -547,17 +547,17 @@ export default {
    * @returns {void}
    */
   clearChildren(element) {
-    // we need to check this.bindings for any reference to any of the children that are being removed
-    // and remove their bindings
+    // we need to check this.handlers for any reference to any of the children that are being removed
+    // and remove their handlers
     // get all the children
     const children = element.childNodes,
-      bindings = this.bindings;
+      handlers = this.handlers;
 
-    // the bindings contain a reference to the element in their element property,
+    // the handlers contain a reference to the element in their element property,
     // so we just need to match that element to the element that is being removed
     Array.from(children).forEach((child) => {
-      for (let key in bindings) {
-        bindings[key] = bindings[key].filter((bind) => bind.element !== child);
+      for (let key in handlers) {
+        handlers[key] = handlers[key].filter((bind) => bind.element !== child);
       }
 
       // then delete the child
