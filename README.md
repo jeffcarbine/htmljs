@@ -1,31 +1,32 @@
-# html.js
+# quayjs
+quay: /kē/ a concrete, stone, or metal platform lying alongside or projecting into water for loading and unloading ships.
 
-A lightweight JavaScript framework for rendering both server-side and client-side HTML.
+A lightweight JavaScript framework for rendering both server-side and client-side, and tethering elements to data structures.
 
 ## Installation
 
 You can install the package via npm:
 
 ```sh
-npm install @carbineco/htmljs
+npm install quayjs
 ```
 
 ## Import
 
-Import html.js into your project
+Import quayjs into your project
 
 ```js
-import App from "htmljs";
+import Quay from "quayjs";
 ```
 
 ## Usage
 
 ### Elements
 
-html.js includes a library of all 161 valid HTML elements, including SVG elements. You can import any of these elements from the included `elements` file.
+quayjs includes a library of all 161 valid HTML elements, including SVG elements. You can import any of these elements from the included `elements` file.
 
 ```js
-import { Div, H1, Img, P } from "htmljs/elements";
+import { Div, H1, Img, P } from "quayjs/elements";
 
 const element = new Div({
   class: "card",
@@ -39,7 +40,7 @@ const element = new Div({
 
 ### Properties
 
-Properties of an element in html.js are the same as an Element in JavaScript, with a few exceptions listed below.
+Properties of an element in quayjs are the same as an Element in JavaScript, with a few exceptions listed below.
 
 ```js
 const standard = document.createElement("div");
@@ -89,9 +90,9 @@ const element = new Div({
 
 #### Specialized Elements
 
-html.js also includes a number of specialized elements to simplify the process:
+quayjs also includes a number of specialized elements to simplify the process:
 
-- `Layout` extends `Html` - automatically adds the App object. Imported separately from the `layout.html.js` file.
+- `Layout` extends `Html` - automatically adds the App object. Imported separately from the `layout.quayjs` file.
 - `Stylesheet` extends `Link` - adds `rel="stylesheet"` automatically
 - `PreLoadStyle` extends `Link` - adds `rel`, `as`, and `onload` to pre-load stylesheets
 - `Module` extends `Script` - adds `type="module`
@@ -133,29 +134,41 @@ Some elments have unique shorthands:
 
 #### Client-side Render
 
-To client-side render, import the Htmljs object and call the `create` method. `create` takes in three parameters:
+To client-side render, import the quayjs object and call the `create` method. `create` takes in three parameters:
 
 - the object to render
 - the data to data-bind (optional)
 - callback to render the element to the DOM
 
 ```js
-import App from "htmljs";
+import Quay from "quayjs";
 
-App.create(new H1("Hello World"), (element) =>
+// set an element to a variable
+const heading = Quay.render(new H1("Hello World"));
+
+// render an element as a child of another
+Quay.render(new H1("Hello World"), "body");
+
+// run a callback with an element
+Quay.render(new H1("Hello World"), (element) =>
   document.body.appendChild(element)
 );
 ```
 
 #### Server-side Render
 
-To server-side render, use html.js as your view engine
+To server-side render, use quayjs as your view engine
 
 ```js
-app.set("view engine", "html.js");
+import app from "express";
+import { QuayEngine } from "quayjs";
+
+QuayEngine(app);
+
+app.get("index.html" ...)
 ```
 
-And then you can write your views using html.js with the extension of html.js. Html.js templates export a default function with a parameter of `data`, which contains the data being sent from the server.
+And then you can write your views using quayjs with the extension of quayjs. quayjs templates export a default function with a parameter of `data`, which contains the data being sent from the server.
 
 ```js
 export default (data) => {
@@ -188,7 +201,7 @@ export const layout = (data, content) => {
 ```
 
 ```js
-import { layout } from "./layout.html.js";
+import { layout } from "./layout.quayjs";
 
 export default (data) => {
   return layout(data, {
@@ -206,7 +219,7 @@ export default (data) => {
 To data-bind, pass an anonymous function to an element's property. The anonymous function accepts two parameters:
 
 - The data being bound
-- The library of html.js elements
+- The library of quayjs elements
 
 ```js
 const data = {
@@ -247,111 +260,3 @@ const element = new Div({
 ```
 
 #### Binding the data
-
-To bind data to an element, pass the data as the second argument in the `create` method.
-
-```js
-import App from "htmljs";
-
-const data = {
-  _id: "testData",
-  elementClass: "test-element",
-  elementText: "This is a test of data-binding",
-  children: ["one", "two", "three"],
-};
-
-const element = new Div({
-  class: (data) => data.elementClass,
-  children: [
-    new P((data) => data.elementText),
-    new Ul({
-      children: (data, e) => {
-        const children = [];
-
-        data.children.forEach((child) => {
-          children.push(new e.Li(child));
-        });
-
-        return children;
-      },
-    }),
-  ],
-});
-
-App.create(element, data, (el) => document.body.appendChild(el));
-```
-
-```html
-<div class="test-element">
-  <p>This is a test of data-binding</p>
-  <ul>
-    <li>one</li>
-    <li>two</li>
-    <li>three</li>
-  </ul>
-</div>
-```
-
-#### Updating the data
-
-To update the data, you simply run the `update` method and pass in the new data. Data is identified by its `_id` key. This is to make updating data received from MongoDb requests simple. The updated data object does not have to be complete to update - it will only update the key/values that are present.
-
-```js
-const newData = {
-  _id: "testData",
-  children: [1, 2, 3, 4],
-};
-```
-
-```html
-<div class="test-element">
-  <p>This is a test of data-binding</p>
-  <ul>
-    <li>1</li>
-    <li>2</li>
-    <li>3</li>
-    <li>4</li>
-  </ul>
-</div>
-```
-
-#### Data-binding from the server
-
-You can send data-bound elements from the server. In your template files, define an export called `boundData` to define the data, and then bind in your html.js as you normally would.
-
-```js
-
-import { layout } from "./layout.html.js";
-
-export const boundData = {
-  _id: "testData",
-  elementClass: "test-element",
-  elementText: "This is a test of data-binding",
-  children: ["one", "two", "three"],
-};
-
-export default (data) => {
-  return layout(data, {
-    id: "welcome",
-    child: new Div({
-      class: (data) => data.elementClass,
-      children: [
-        new P((data) => data.elementText),
-        new Ul({
-          children: (data, e) => {
-            const children = [];
-
-            data.children.forEach((child) => {
-              children.push(new e.Li(child));
-            });
-
-            return children;
-          },
-        }),
-      ],
-    });
-  });
-};
-```
-
-The element will arrive client-side with the data already rendered and the bindings in place as long as you are using the `Layout` element.
