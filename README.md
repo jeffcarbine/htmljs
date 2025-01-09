@@ -1,5 +1,5 @@
 # quay.js
-quay: /kē/ a concrete, stone, or metal platform lying alongside or projecting into water for loading and unloading ships.
+__quay: /kē/ a concrete, stone, or metal platform lying alongside or projecting into water for loading and unloading ships.__
 
 A lightweight JavaScript framework for rendering both server-side and client-side, and tethering elements to data structures.
 
@@ -129,9 +129,9 @@ Some elments have unique shorthands:
 - Thead: array shorthand wraps each child in a Th() unless already wrapped, and wraps the children in a Tr(), unless already wrapped
 - Tbody: array shorthand wraps first child in a Th() and subsequent children in a Td() unless already wrapped, and wraps the children in a Tr(), unless already wrapped
 
-### Rendering
+## Rendering
 
-#### Client-side Render
+### Client-side Render
 
 To client-side render, import the quay.js object and call the `create` method. `create` takes in three parameters:
 
@@ -154,7 +154,7 @@ Quay.render(new H1("Hello World"), (element) =>
 );
 ```
 
-#### Server-side Render
+### Server-side Render
 
 To server-side render, pass your express app to the `QuayEngine` function.
 
@@ -213,7 +213,7 @@ export default (data) => {
 };
 ```
 
-### Data Binding
+## Data Binding
 
 Data can be attached to the Quay object by simply assigning to the `Quay.data` object.
 
@@ -375,7 +375,7 @@ Quay.data.person = update;
 // </div>  
 ```
 
-### Server-Side Data Binding
+## Server-Side Data Binding
 
 Quay.js allows you to bind data to elements server-side so they can arrive client-side having already been set up with the correct data and bound to the proper bindings.
 
