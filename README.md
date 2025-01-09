@@ -43,13 +43,13 @@ const element = new Div({
 Properties of an element in quayjs are the same as an Element in JavaScript, with a few exceptions listed below.
 
 ```js
-const standard = document.createElement("div");
+const element1 = document.createElement("div");
 element.id = "foo";
 element.tagName = "div";
 element.textContent = "Hello World";
 element.tabindex = -1;
 
-const htmls = new Div({
+const element2 = new Div({
   id: "foo",
   textContent: "Hello World",
   tabindex: -1,
