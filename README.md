@@ -465,6 +465,24 @@ export const config = async () => {
 }
 ```
 
+### Getting data from the view's data
+
+Sometimes you will want a piece of data that is being passed to your view. You can pass an optional parameter to the config function to access that data.
+
+```js
+import Person from "./models/person.js";
+
+export const config = async (viewData) => {
+  return {
+    people: {
+      data: () => {
+        return await Person.find({userId: viewData.userId});
+      }  
+    }
+  }
+}
+```
+
 ### Creating an update endpoint and route
 
 You can set an update endpoint to a `hook`, which will give quay.js a route to post to whenever it's data changes.
@@ -472,11 +490,11 @@ You can set an update endpoint to a `hook`, which will give quay.js a route to p
 ```js
 import Person from "./models/person.js";
 
-export const config = async () => {
+export const config = async (viewData) => {
   return {
     people: {
       data: () => {
-        return await Person.find();
+        return await Person.find({userId: viewData.userId});
       },
       endpoint: "/person/",
     }
@@ -489,11 +507,11 @@ You can create your route externally, but you can also register a route within y
 ```js
 import Person from "./models/person.js";
 
-export const config = async () => {
+export const config = async (viewData) => {
   return {
     people: {
       data: () => {
-        return await Person.find();
+        return await Person.find({userId: viewData.userId});
       },
       route: (app) => {
         app.post("/person", async (req, res) => {
