@@ -325,12 +325,6 @@ class LastNameContainer extends Span {
   }
 }
 
-const data = {
-  elementClass: "test-element",
-  elementText: "This is a test of data-binding",
-  children: ["one", "two", "three"],
-};
-
 const element = new Div({
   binding: "person.identity",
   children: [
@@ -351,4 +345,102 @@ const element = new Div({
 //     </span>
 //   </span>
 // </div>  
+```
+
+Once data is bound to an element, each time the specific binding is updated, the element will re-render with the updated data.
+
+```js
+const update = {
+  person: {
+    identity: {
+      first_name: "Jane",
+      last_name: "Smith",
+    }
+  }
+}
+
+Quay.data.person = update;
+
+// element re-renders to display:
+//
+// <div>
+//   <span>
+//    <strong>Jane</strong> 
+//   </span>
+//   <span>
+//     <span class="lastNameContainer">
+//       Smith
+//     </span>
+//   </span>
+// </div>  
+```
+
+### Server-Side Data Binding
+
+Quay.js allows you to bind data to elements server-side so they can arrive client-side having already been set up with the correct data and bound to the proper bindings.
+
+To do so, you will need to export a function called `config` in the view file you are rendering on the server.
+
+```js
+
+export const config = () => {
+  return {
+    people: {
+      list: [
+        {
+          identity: {
+            first_name: "Jane",
+            last_name: "Smith",
+          }
+        },
+        {
+          identity: {
+            first_name: "Jane",
+            last_name: "Smith",
+          }
+        },
+        {
+          identity: {
+            first_name: "Jane",
+            last_name: "Smith",
+          }
+        },
+        {
+          identity: {
+            first_name: "Jane",
+            last_name: "Smith",
+          }
+        },
+        {
+          identity: {
+            first_name: "Jane",
+            last_name: "Smith",
+          }
+        },
+      ],
+      totalCount: 5,
+    }
+  }
+}
+
+export default (data) => {
+  return new Section({
+    binding: "people",
+    children: (people, e) => {
+      const children = [];
+
+      people.forEach((person) => {
+        children.push(new e.Div({
+            children: [
+              new Span(person.identity.first_name),
+              new Span(person.identity.last_name),
+            ]
+        }))
+      })
+
+      return children;
+    }
+  })
+}
+
 ```
