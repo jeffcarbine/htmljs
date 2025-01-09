@@ -1,5 +1,5 @@
 # quay.js
-__quay: /kē/ a concrete, stone, or metal platform lying alongside or projecting into water for loading and unloading ships.__
+*quay: /kē/ a concrete, stone, or metal platform lying alongside or projecting into water for loading and unloading ships.*
 
 A lightweight JavaScript framework for rendering both server-side and client-side, and tethering elements to data structures.
 
@@ -215,7 +215,7 @@ export default (data) => {
 
 ## Data Binding
 
-Data can be attached to the Quay object by simply assigning to the `Quay.data` object.
+Data can be attached to the `Quay` object by simply assigning to the `Quay.data` object.
 
 The key that is used to attach to the `Quay.data` object is referred to as the **hook**;
 
@@ -377,7 +377,7 @@ Quay.data.person = update;
 
 ## Server-Side Data Binding
 
-Quay.js allows you to bind data to elements server-side so they can arrive client-side having already been set up with the correct data and bound to the proper bindings.
+In quay.js you can bind data to elements server-side. This way, they can arrive client-side having already been set up with the correct data and bound to the proper bindings.
 
 To do so, you will need to export a function called `config` in the view file you are rendering on the server.
 
