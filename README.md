@@ -382,43 +382,44 @@ In quay.js you can bind data to elements server-side. This way, they can arrive 
 To do so, you will need to export a function called `config` in the view file you are rendering on the server.
 
 ```js
-
-export const config = () => {
+export const config = async () => {
   return {
     people: {
-      list: [
-        {
-          identity: {
-            first_name: "Jane",
-            last_name: "Smith",
-          }
-        },
-        {
-          identity: {
-            first_name: "Jane",
-            last_name: "Smith",
-          }
-        },
-        {
-          identity: {
-            first_name: "Jane",
-            last_name: "Smith",
-          }
-        },
-        {
-          identity: {
-            first_name: "Jane",
-            last_name: "Smith",
-          }
-        },
-        {
-          identity: {
-            first_name: "Jane",
-            last_name: "Smith",
-          }
-        },
-      ],
-      totalCount: 5,
+      data: {
+        list: [
+          {
+            identity: {
+              first_name: "Jane",
+              last_name: "Smith",
+            }
+          },
+          {
+            identity: {
+              first_name: "Jane",
+              last_name: "Smith",
+            }
+          },
+          {
+            identity: {
+              first_name: "Jane",
+              last_name: "Smith",
+            }
+          },
+          {
+            identity: {
+              first_name: "Jane",
+              last_name: "Smith",
+            }
+          },
+          {
+            identity: {
+              first_name: "Jane",
+              last_name: "Smith",
+            }
+          },
+        ],
+        totalCount: 5,
+      }    
     }
   }
 }
@@ -442,5 +443,96 @@ export default (data) => {
     }
   })
 }
-
 ```
+
+The server will render out all the appropriate elements before delivering them to the client. Once rendered by the client, it will set up the data on the client's `Quay` object and will set up all the bindings.
+
+### Getting data from models
+
+More useful is being able to pull data from your models and binding it on the server. Instead of passing an object to the `hook`'s `data` parameter, pass an anonymous function.
+
+```js
+import Person from "./models/person.js";
+
+export const config = async () => {
+  return {
+    people: {
+      data: () => {
+        return await Person.find();
+      }  
+    }
+  }
+}
+```
+
+### Creating an update endpoint and route
+
+You can set an update endpoint to a `hook`, which will give quay.js a route to post to whenever it's data changes.
+
+```js
+import Person from "./models/person.js";
+
+export const config = async () => {
+  return {
+    people: {
+      data: () => {
+        return await Person.find();
+      },
+      endpoint: "/person/",
+    }
+  }
+}
+```
+
+You can create your route externally, but you can also register a route within your view.
+
+```js
+import Person from "./models/person.js";
+
+export const config = async () => {
+  return {
+    people: {
+      data: () => {
+        return await Person.find();
+      },
+      route: (app) => {
+        app.post("/person", async (req, res) => {
+          const body = req.body,
+            userId = req.body.userId;
+
+          await Person.findOneAndUpdate(
+            {
+              userId,
+            },
+            {
+              body
+            },
+            {
+              new: true
+            }
+          ).then((person) => {
+            if(!person) return res.status(404).send("No matching person found");
+
+            return res.status(200).send(person);
+          }).catch((err) => {
+            return res.status(500).send(err);
+            console.warn(err);
+          })
+        });
+      },
+      endpoint: "/person/",
+    }
+  }
+}
+```
+
+This setup will:
+
+- fetch the needed data for the view
+- register a route with express for the endpoint
+- create an endpoint for the desired `hook`
+
+And now, client-side when the `hook` is updated, it will
+
+- update the bindings on the screen
+- send a request to the server to update the data in the database
